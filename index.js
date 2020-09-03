@@ -203,6 +203,39 @@ async function createCodeDeployDeployment(codedeploy, clusterName, service, task
   }
 }
 
+// Run one-off task
+async function runOneOffTask(ecs, clusterName, taskDefArn, waitForTask, waitForMinutes) {
+  core.debug('Run one-off task');
+  const runTaskResult = await ecs.runTask({
+    cluster: clusterName,
+    taskDefinition: taskDefArn
+  }).promise();
+
+  // TODO: Remove
+  console.log(`Run task result: ${JSON.stringify(runTaskResult, null, 2)}`);
+
+  core.info(`Task started. Watch its progress in the Amazon ECS console: https://console.aws.amazon.com/ecs/home?region=${aws.config.region}#/clusters/${clusterName}/tasks/${'__TODO__'}/details`);
+
+  // Wait for task to complete
+  if (waitForTask && waitForTask.toLowerCase() === 'true') {
+    core.debug(`Waiting for the task to complete. Will wait for ${waitForMinutes} minutes`);
+    const maxAttempts = (waitForMinutes * 60) / WAIT_DEFAULT_DELAY_SEC;
+    let waitForResult = await ecs.waitFor('tasksStopped', {
+      cluster: clusterName,
+      tasks: [taskDefArn],
+      $waiter: {
+        delay: WAIT_DEFAULT_DELAY_SEC,
+        maxAttempts: maxAttempts
+      }
+    }).promise();
+
+    // TODO: Remove
+    console.log(`Wait for tasksStopped result: ${JSON.stringify(waitForResult, null, 2)}`);
+  } else {
+    core.debug('Not waiting for the task to complete');
+  }
+}
+
 async function run() {
   try {
     const ecs = new aws.ECS({
@@ -216,7 +249,9 @@ async function run() {
     const taskDefinitionFile = core.getInput('task-definition', { required: true });
     const service = core.getInput('service', { required: false });
     const cluster = core.getInput('cluster', { required: false });
+    const oneOff = core.getInput('one-off', { required: false });
     const waitForService = core.getInput('wait-for-service-stability', { required: false });
+    const waitForTask = core.getInput('wait-for-task-to-complete', { required: false });
     let waitForMinutes = parseInt(core.getInput('wait-for-minutes', { required: false })) || 30;
     if (waitForMinutes > MAX_WAIT_MINUTES) {
       waitForMinutes = MAX_WAIT_MINUTES;
@@ -241,10 +276,10 @@ async function run() {
     const taskDefArn = registerResponse.taskDefinition.taskDefinitionArn;
     core.setOutput('task-definition-arn', taskDefArn);
 
+    const clusterName = cluster ? cluster : 'default';
+
     // Update the service with the new task definition
     if (service) {
-      const clusterName = cluster ? cluster : 'default';
-
       // Determine the deployment controller
       const describeResponse = await ecs.describeServices({
         services: [service],
@@ -270,6 +305,8 @@ async function run() {
       } else {
         throw new Error(`Unsupported deployment controller: ${serviceResponse.deploymentController.type}`);
       }
+    } else if (oneOff) {
+      await runOneOffTask(ecs, clusterName, taskDefArn, waitForTask, waitForMinutes);
     } else {
       core.debug('Service was not specified, no service updated');
     }

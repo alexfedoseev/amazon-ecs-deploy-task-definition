@@ -28,6 +28,12 @@ inputs:
   codedeploy-deployment-group:
     description: "The name of the AWS CodeDeploy deployment group, if the ECS service uses the CODE_DEPLOY deployment controller. Will default to 'DgpECS-{cluster}-{service}'."
     required: false
+  one-off:
+    description: 'Whether to run the ECS task as one-off after deploying the new task definition. Valid value is "true". Will default to not running the task as one-off.'
+    required: false
+  wait-for-task-to-complete:
+    description: 'Whether to wait for the ECS one-off task to complete after deploying the new task definition. Valid value is "true". Will default to not waiting.'
+    required: false
 outputs:
   task-definition-arn:
     description: 'The ARN of the registered ECS task definition'
